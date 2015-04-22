@@ -4,6 +4,9 @@
 NewsTrain = read.csv("NYTimesBlogTrain.csv", stringsAsFactors=FALSE)
 NewsTest = read.csv("NYTimesBlogTest.csv", stringsAsFactors=FALSE)
 
+# Popular words
+PopWords = as.vector(read.table('popwords.txt'))
+
 # ==============
 # Transform data
 # ==============
@@ -11,6 +14,23 @@ NewsTest = read.csv("NYTimesBlogTest.csv", stringsAsFactors=FALSE)
 News = NewsTrain
 News$Popular = NULL
 News = rbind(News, NewsTest)
+
+# -- Extract info from Headline
+News$Headline = tolower(News$Headline)
+
+# --- Is the headline a question?
+News$HeadlineQuestion = grepl('\\?', News$Headline)
+
+# --- Does the headline contain popular words?
+checkWords = function(v, words)
+{
+  re = paste(words[[1]], collapse='|')
+  out = grepl(re, v)
+  return(out)
+}
+
+#FIXME: doesn't contribute
+#News$HeadlinePopWords = checkWords(News$Headline, PopWords)
 
 # -- Use log of WordCount
 News$WordCountLog = log(1 + News$WordCount)
@@ -30,6 +50,9 @@ News$PubDate = NULL
 #News$PubDay = PubDate$mday
 News$PubWeekday = PubDate$wday
 News$PubHour = PubDate$hour
+
+# BoW
+NewsWords = News
 
 # -- Create function to apply BofW to text
 library(tm)
@@ -66,14 +89,17 @@ AbstractWords$UniqueID = News$UniqueID
 NewsWords = News
 NewsWords = merge(NewsWords, HeadlineWords, by="UniqueID")
 Headline = News$Headline
-NewsWords$Headline = NULL
+
 # --- Snippet
 NewsWords = merge(NewsWords, SnippetWords, by="UniqueID")
 Snippet = News$Snippet
-NewsWords$Snippet = NULL
+
 # --- Abstact
 NewsWords = merge(NewsWords, AbstractWords, by="UniqueID")
 Abstract = News$Abstract
+
+NewsWords$Headline = NULL
+NewsWords$Snippet = NULL
 NewsWords$Abstract = NULL
 
 # -- Split the data again into training and test sets
@@ -92,12 +118,11 @@ table(NewsTrain$Popular)
 ####  Logistic Regression ####
 # Build LR model and check summary
 NewsLog = glm(Popular ~. - UniqueID, data=NewsTrain, family=binomial)
-summary(NewsLog)
 
 # Check predictions on the training set
 NewsTrainPred = predict(NewsLog)
 table(NewsTrain$Popular, NewsTrainPred > 0.5)
-accuracy = (5290 + 636) / nrow(NewsTrain)
+accuracy = (5303 + 638) / nrow(NewsTrain)
 accuracy
 
 # Make predictions on the test set
@@ -105,7 +130,7 @@ NewsTestPred = predict(NewsLog, newdata=NewsTest, type="response")
 
 # Make submission (LOG)
 submission = data.frame(UniqueID = NewsTest$UniqueID, Probability1 = NewsTestPred)
-write.csv(submission, "MySubmissionLog3.csv", row.names=FALSE)
+write.csv(submission, "MySubmissionLog4.csv", row.names=FALSE)
 
 ###### CART model #####
 # Try a CART model
@@ -129,13 +154,13 @@ NewsRF = randomForest(Popular ~ ., data=NewsTrain, ntree=500, nodesize=20)
 # Get accuracy of RF on trainng set
 NewsTrainPred = predict(NewsRF)
 table(NewsTrain$Popular, NewsTrainPred)
-accuracy = (5242 + 728) / nrow(NewsTrain)
+accuracy = (5240 + 740) / nrow(NewsTrain)
 accuracy
 
 # Make a submission 
 NewsTestPred = predict(NewsRF, newdata=NewsTest)
 submission = data.frame(UniqueID = NewsTest$UniqueID, Probability1 = NewsTestPred)
-write.csv(submission, "MySubmissionRF3.csv", row.names=FALSE) #0.82473
+write.csv(submission, "MySubmissionRF4.csv", row.names=FALSE) #0.82303
 # Probably overfit the training set
 
 #### Clustering ####
