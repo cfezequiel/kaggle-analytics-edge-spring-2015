@@ -37,20 +37,29 @@ makeSubmitFile(NewsWordsTest$UniqueID, NewsTestLogPred, "MySubmissionLog5.csv", 
 library(rpart)
 library(rpart.plot)
 
+# Use cross validation
+library(caret)
+library(e1071)
+set.seed(69)
+numFolds <- trainControl(method="cv", number=10)
+grid <- expand.grid(.cp = seq(0.002,0.1,0.002))
+train(Popular ~ . - UniqueID, data=NewsWordsTrain, method="rpart", trControl=numFolds, tuneGrid=grid)
+
 # Build model
-UniqueID = NewsWordsTrain$UniqueID
-NewsWordsTrain$UniqueID = NULL
-NewsCART = rpart(Popular ~ ., data=NewsWordsTrain)
-NewsWordsTrain$UniqueID = UniqueID
+NewsCART = rpart(Popular ~ . - UniqueID, data=NewsWordsTrain, cp=0.002)
 
 # Check
 prp(NewsCART)
 
 # Training performance
-NewsTrainCARTPred = predict(NewsCART)
+NewsTrainCARTPred = predict(NewsCART, type="prob")
 t = table(NewsTrain$Popular, NewsTrainCARTPred[,2] > 0.5)
 accuracy(t)
 aucroc(NewsTrainCARTPred[,2], NewsTrain$Popular)
+
+# Make a submission 
+NewsTestCARTPred = predict(NewsCART, newdata=NewsWordsTest, type="prob")
+makeSubmitFile(NewsWordsTest$UniqueID, NewsTestCARTPred[,2], "MySubmissionCART.csv", "submit")
 
 # -------------
 # Random Forest
