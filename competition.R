@@ -1,169 +1,90 @@
 # ============
-# Extract data
+# Load scripts
 # ============
-NewsTrain = read.csv("NYTimesBlogTrain.csv", stringsAsFactors=FALSE)
-NewsTest = read.csv("NYTimesBlogTest.csv", stringsAsFactors=FALSE)
+source('dataprep.R')
+source('util.R')
 
-# Popular words
-PopWords = as.vector(read.table('popwords.txt'))
+# ==========
+# Run models
+# ==========
+# --------
+# Baseline
+# --------
+t = table(NewsWordsTrain$Popular)
+accuracy(t) # accuracy = 0.8326699 (predict all FALSE)
 
-# ==============
-# Transform data
-# ==============
-# -- Combine the training and test data
-News = NewsTrain
-News$Popular = NULL
-News = rbind(News, NewsTest)
-
-# -- Extract info from Headline
-News$Headline = tolower(News$Headline)
-
-# --- Is the headline a question?
-News$HeadlineQuestion = grepl('\\?', News$Headline)
-
-# --- Does the headline contain popular words?
-checkWords = function(v, words)
-{
-  re = paste(words[[1]], collapse='|')
-  out = grepl(re, v)
-  return(out)
-}
-
-#FIXME: doesn't contribute
-#News$HeadlinePopWords = checkWords(News$Headline, PopWords)
-
-# -- Use log of WordCount
-News$WordCountLog = log(1 + News$WordCount)
-News$WordCount = NULL
-
-# -- Change some variables to factors
-News$NewsDesk = as.factor(News$NewsDesk)
-News$SectionName = as.factor(News$SectionName)
-News$SubsectionName = as.factor(News$SubsectionName)
-Popular = as.factor(NewsTrain$Popular)
-
-# -- Change PubDate to Year Month Day
-PubDate = strptime(News$PubDate, "%Y-%m-%d %H:%M:%S")
-News$PubDate = NULL
-#News$PubYear = PubDate$year # It's all 2014!
-#News$PubMonth = PubDate$mon
-#News$PubDay = PubDate$mday
-News$PubWeekday = PubDate$wday
-News$PubHour = PubDate$hour
-
-# BoW
-NewsWords = News
-
-# -- Create function to apply BofW to text
-library(tm)
-corpufy = function(v, prefix, sparsity=0.99) {
-  # Then create a corpus from the headline variable. You can use other variables in the dataset for text analytics, but we will just show you how to use this particular variable. 
-  # Note that we are creating a corpus out of the training and testing data.
-  
-  corpus = Corpus(VectorSource(v))
-  corpus = tm_map(corpus, tolower)  
-  corpus = tm_map(corpus, PlainTextDocument)  
-  corpus = tm_map(corpus, removePunctuation)
-  corpus = tm_map(corpus, removeWords, stopwords("english"))  
-  corpus = tm_map(corpus, stemDocument)
-  dtm = DocumentTermMatrix(corpus)
-  sparse = removeSparseTerms(dtm, sparsity)
-  words = as.data.frame(as.matrix(sparse))
-  
-  # Let's make sure our variable names are okay for R
-  colnames(words) = make.names(colnames(words))
-  colnames(words) = paste(prefix, colnames(words), sep='_') 
-  return(words)
-}
-
-# -- Transform text variables to BofW
-HeadlineWords = corpufy(News$Headline, 'H', 0.98)
-HeadlineWords$UniqueID = News$UniqueID
-SnippetWords = corpufy(News$Snippet, 'S', 0.96)
-SnippetWords$UniqueID = News$UniqueID
-AbstractWords = corpufy(News$Abstract, 'A', 0.96)
-AbstractWords$UniqueID = News$UniqueID
-
-# -- Combine the BoW data frames to original df
-# --- Headline
-NewsWords = News
-NewsWords = merge(NewsWords, HeadlineWords, by="UniqueID")
-Headline = News$Headline
-
-# --- Snippet
-NewsWords = merge(NewsWords, SnippetWords, by="UniqueID")
-Snippet = News$Snippet
-
-# --- Abstact
-NewsWords = merge(NewsWords, AbstractWords, by="UniqueID")
-Abstract = News$Abstract
-
-NewsWords$Headline = NULL
-NewsWords$Snippet = NULL
-NewsWords$Abstract = NULL
-
-# -- Split the data again into training and test sets
-NewsTrain = head(NewsWords, nrow(NewsTrain))
-NewsTrain$WordCount = NULL
-NewsTrain$Popular = Popular
-NewsTest = tail(NewsWords, nrow(NewsTest))
-
-# =========
-# Load data (to various models)
-# =========
-# Check the baseline
-table(NewsTrain$Popular)
-(5439) / nrow(NewsTrain) # accuracy = 0.8326699 (predict all FALSE)
-
-####  Logistic Regression ####
+# -------------------
+# Logistic Regression
+# -------------------
 # Build LR model and check summary
-NewsLog = glm(Popular ~. - UniqueID, data=NewsTrain, family=binomial)
+NewsLog = glm(Popular ~. - UniqueID, data=NewsWordsTrain, family=binomial)
 
-# Check predictions on the training set
-NewsTrainPred = predict(NewsLog)
-table(NewsTrain$Popular, NewsTrainPred > 0.5)
-accuracy = (5303 + 638) / nrow(NewsTrain)
-accuracy
+# Check training performance
+NewsTrainLogPred = predict(NewsLog)
+t = table(NewsWordsTrain$Popular, NewsTrainLogPred > 0.5)
+accuracy(t)
+aucroc(NewsTrainLogPred, NewsWordsTrain$Popular)
 
 # Make predictions on the test set
-NewsTestPred = predict(NewsLog, newdata=NewsTest, type="response")
+NewsTestLogPred = predict(NewsLog, newdata=NewsWordsTest, type="response")
 
 # Make submission (LOG)
-submission = data.frame(UniqueID = NewsTest$UniqueID, Probability1 = NewsTestPred)
-write.csv(submission, "MySubmissionLog4.csv", row.names=FALSE)
+makeSubmitFile(NewsWordsTest$UniqueID, NewsTestLogPred, "MySubmissionLog5.csv", "submit")
 
-###### CART model #####
-# Try a CART model
+# ----------
+# CART model
+# ----------
 library(rpart)
 library(rpart.plot)
-NewsTrain$UniqueID = NULL
-NewsCART = rpart(Popular ~ ., data=NewsTrain)
+
+# Build model
+UniqueID = NewsWordsTrain$UniqueID
+NewsWordsTrain$UniqueID = NULL
+NewsCART = rpart(Popular ~ ., data=NewsWordsTrain)
+NewsWordsTrain$UniqueID = UniqueID
+
+# Check
 prp(NewsCART)
 
-# Get accuracy of training set
-NewsTrainPred = predict(NewsCART)
-table(NewsTrain$Popular, NewsTrainPred[,2] > 0.5)
-(5288 + 621) / nrow(NewsTrain) # 0.9046234
+# Training performance
+NewsTrainCARTPred = predict(NewsCART)
+t = table(NewsTrain$Popular, NewsTrainCARTPred[,2] > 0.5)
+accuracy(t)
+aucroc(NewsTrainCARTPred[,2], NewsTrain$Popular)
 
-###### Random Forest ######
-# Now try a RF model
+# -------------
+# Random Forest
+# -------------
 library(randomForest)
-set.seed(69)
-NewsRF = randomForest(Popular ~ ., data=NewsTrain, ntree=500, nodesize=20)
 
-# Get accuracy of RF on trainng set
-NewsTrainPred = predict(NewsRF)
-table(NewsTrain$Popular, NewsTrainPred)
-accuracy = (5240 + 740) / nrow(NewsTrain)
-accuracy
+# Get tuning parameter/s
+# TODO
+
+set.seed(69)
+NewsRF = randomForest(Popular ~ . - UniqueID, data=NewsWordsTrain, ntree=500, nodesize=20, mtry=6, method="class")
+
+# Get accuracy of RF on training set
+NewsTrainRFPred = predict(NewsRF)
+t = table(NewsWordsTrain$Popular, NewsTrainRFPred > 0.5)
+accuracy(t)
 
 # Make a submission 
-NewsTestPred = predict(NewsRF, newdata=NewsTest)
-submission = data.frame(UniqueID = NewsTest$UniqueID, Probability1 = NewsTestPred)
-write.csv(submission, "MySubmissionRF4.csv", row.names=FALSE) #0.82303
-# Probably overfit the training set
+NewsTestRFPred = predict(NewsRF, newdata=NewsTest, type="response")
+makeSubmitFile(NewsWordsTest$UniqueID, NewsTestRFPred, "MySubmissionRF5.csv", "submit")
 
-#### Clustering ####
-spl = split(NewsTrain, NewsTrain$NewsDesk)
-str(spl)
-lapply(spl, nrow)
+# Tune RF
+Popular = NewsTrain$Popular
+UniqueID = NewsTrain$UniqueID
+NewsTrain$Popular = NULL
+NewsTrain$UniqueID = NULL
+NewsRFTune = tuneRF(NewsTrain, Popular)
+NewsTrain$Popular = Popular
+NewsTrain$UniqueID = UniqueID
+
+# Use cross validation
+library(caret)
+library(e1071)
+set.seed(69)
+numFolds <- trainControl(method="cv", number=10)
+grid <- expand.grid(mtry=12)
+train(Popular ~ . - UniqueID, data=NewsWordsTrain, method="rf", trControl=numFolds, tuneGrid=grid)
