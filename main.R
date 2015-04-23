@@ -61,16 +61,17 @@ library(randomForest)
 # TODO
 
 set.seed(69)
-NewsRF = randomForest(Popular ~ . - UniqueID, data=NewsWordsTrain, ntree=500, nodesize=20, mtry=6, method="class")
+NewsRF = randomForest(Popular ~ . - UniqueID, data=NewsWordsTrain, ntree=500, nodesize=20, mtry=6)
 
 # Get accuracy of RF on training set
-NewsTrainRFPred = predict(NewsRF)
-t = table(NewsWordsTrain$Popular, NewsTrainRFPred > 0.5)
+NewsTrainRFPred = predict(NewsRF, type="prob")
+t = table(NewsWordsTrain$Popular, NewsTrainRFPred[,2] > 0.5)
 accuracy(t)
+aucroc(NewsTrainRFPred[,2], NewsWordsTrain$Popular)
 
 # Make a submission 
-NewsTestRFPred = predict(NewsRF, newdata=NewsTest, type="response")
-makeSubmitFile(NewsWordsTest$UniqueID, NewsTestRFPred, "MySubmissionRF5.csv", "submit")
+NewsTestRFPred = predict(NewsRF, newdata=NewsWordsTest, type="prob")
+makeSubmitFile(NewsWordsTest$UniqueID, NewsTestRFPred[,2], "MySubmissionRF5.csv", "submit")
 
 # Tune RF
 Popular = NewsTrain$Popular
