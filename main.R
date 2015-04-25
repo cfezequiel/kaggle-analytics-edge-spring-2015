@@ -1,7 +1,7 @@
 # ============
 # Load scripts
 # ============
-source('dataprep.R')
+source('dataprep2.R')
 source('util.R')
 
 # ==========
@@ -18,6 +18,7 @@ accuracy(t) # accuracy = 0.8326699 (predict all FALSE)
 # -------------------
 # Build LR model and check summary
 NewsLog = glm(Popular ~. - UniqueID, data=NewsWordsTrain, family=binomial)
+summary(NewsLog)
 
 # Check training performance
 NewsTrainLogPred = predict(NewsLog)
@@ -29,7 +30,7 @@ aucroc(NewsTrainLogPred, NewsWordsTrain$Popular)
 NewsTestLogPred = predict(NewsLog, newdata=NewsWordsTest, type="response")
 
 # Make submission (LOG)
-makeSubmitFile(NewsWordsTest$UniqueID, NewsTestLogPred, "MySubmissionLog5.csv", "submit")
+makeSubmitFile(NewsWordsTest$UniqueID, NewsTestLogPred, "MySubmissionLog6.csv", "submit")
 
 # ----------
 # CART model
@@ -80,7 +81,8 @@ aucroc(NewsTrainRFPred[,2], NewsWordsTrain$Popular)
 
 # Make a submission 
 NewsTestRFPred = predict(NewsRF, newdata=NewsWordsTest, type="prob")
-makeSubmitFile(NewsWordsTest$UniqueID, NewsTestRFPred[,2], "MySubmissionRF5.csv", "submit")
+makeSubmitFile(NewsWordsTest$UniqueID, NewsTestRFPred[,2], "MySubmissionRF6.csv", "submit")
+# Last score: 0.91631 (no improv)
 
 # Tune RF
 Popular = NewsTrain$Popular

@@ -65,7 +65,7 @@ corpufy = function(v, prefix, sparsity=0.99) {
   
   # Let's make sure our variable names are okay for R
   colnames(words) = make.names(colnames(words))
-  colnames(words) = paste(prefix, colnames(words), sep='_') 
+  colnames(words) = paste(prefix, colnames(words), sep=ifelse(prefix == '', '', '_')) 
   return(words)
 }
 
@@ -81,17 +81,17 @@ NewsWords = News
 # ---- Headline
 HeadlineWords$UniqueID = News$UniqueID
 NewsWords = merge(NewsWords, HeadlineWords, by="UniqueID")
-Headline = News$Headline
+#Headline = News$Headline
 
 # ---- Snippet
 SnippetWords$UniqueID = News$UniqueID
 NewsWords = merge(NewsWords, SnippetWords, by="UniqueID")
-Snippet = News$Snippet
+#Snippet = News$Snippet
 
 # ---- Abstact
 AbstractWords$UniqueID = News$UniqueID
 NewsWords = merge(NewsWords, AbstractWords, by="UniqueID")
-Abstract = News$Abstract
+#Abstract = News$Abstract
 
 # --- Remove transformed text variables
 NewsWords$Headline = NULL
