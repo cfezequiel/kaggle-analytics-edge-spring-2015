@@ -17,3 +17,20 @@ makeSubmitFile = function(x, y, filename, dir='.') {
   filepath = paste(dir, "/", filename, sep="")
   write.csv(submission, filepath, row.names=FALSE)
 }
+
+# Check training predictions
+verify = function(model, y, threshold=0.5, type="response") {
+  pred = predict(model, type=type)
+  if (type == "prob") {
+    pred = pred[,2] 
+  }
+  if (is.factor(pred)) {
+    t = table(y, pred)
+  }
+  else {
+    t = table(y, pred > threshold)
+  }
+  acc = accuracy(t)
+  auc = aucroc(pred, y)
+  return(list("accuracy"=acc, "auc"=auc))
+}

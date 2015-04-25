@@ -1,58 +1,44 @@
-# ============
-# Extract data
-# ============
-NewsTrain = read.csv("NYTimesBlogTrain.csv", stringsAsFactors=FALSE)
-NewsTest = read.csv("NYTimesBlogTest.csv", stringsAsFactors=FALSE)
+# Combine the training and test data
+combine = function(train, test) {
+  df = train
+  ytrain = df$Popular
+  df$Popular = NULL
+  df = rbind(df, test)
+  return(list("df"=df, "ytrain"=ytrain))
+}
 
-# ==============
-# Transform data
-# ==============
-# -- Combine the training and test data
-News = NewsTrain
-News$Popular = NULL
-News = rbind(News, NewsTest)
+transform = function(df_) {
+  df = df_
+  
+  # Change some variables to factors
+  df$NewsDesk = as.factor(df$NewsDesk)
+  df$SectionName = as.factor(df$SectionName)
+  df$SubsectionName = as.factor(df$SubsectionName)
 
-# -- Change some variables to factors
-News$NewsDesk = as.factor(News$NewsDesk)
-News$SectionName = as.factor(News$SectionName)
-News$SubsectionName = as.factor(News$SubsectionName)
-Popular = as.factor(NewsTrain$Popular)
-
-# -- Extract info from Headline
-News$Headline = tolower(News$Headline)
-
-# --- Is the headline a question?
-News$HeadlineQuestion = grepl('\\?', News$Headline)
-
-# -- Use log of WordCount
-News$WordCountLog = log(1 + News$WordCount)
-News$WordCount = NULL
-
-# -- Change PubDate to Year Month Day
-PubDate = strptime(News$PubDate, "%Y-%m-%d %H:%M:%S")
-News$PubDate = NULL
-#News$PubYear = PubDate$year # It's all 2014!
-#News$PubMonth = PubDate$mon
-#News$PubDay = PubDate$mday
-News$PubWeekday = PubDate$wday
-News$PubHour = PubDate$hour
-
-# -- Split the data  into training and test sets
-NewsTrain = head(News, nrow(NewsTrain))
-NewsTrain$Popular = Popular 
-NewsTest = tail(NewsWords, nrow(NewsTest))
+  # Add a variable if headline is a question or not
+  df$Headline = tolower(df$Headline)
+  df$HeadlineQuestion = grepl('\\?', df$Headline)
+  
+  # Use log of WordCount
+  df$WordCountLog = log(1 + df$WordCount)
+  df$WordCount = NULL
+  
+  # -- Change PubDate to Year Month Day
+  PubDate = strptime(df$PubDate, "%Y-%m-%d %H:%M:%S")
+  df$PubDate = NULL
+  df$PubWeekday = PubDate$wday
+  df$PubHour = PubDate$hour
+  
+  return(df)
+}
 
 # ============
 # Bag of Words
 # ============
-NewsWords = News
 
-# --- Create function to apply BofW to text
+# Apply BofW to text vector
 library(tm)
 corpufy = function(v, prefix, sparsity=0.99) {
-  # Then create a corpus from the headline variable. You can use other variables in the dataset for text analytics, but we will just show you how to use this particular variable. 
-  # Note that we are creating a corpus out of the training and testing data.
-  
   corpus = Corpus(VectorSource(v))
   corpus = tm_map(corpus, tolower)  
   corpus = tm_map(corpus, PlainTextDocument)  
@@ -69,36 +55,37 @@ corpufy = function(v, prefix, sparsity=0.99) {
   return(words)
 }
 
-# --- Transform text variables to BofW
-HeadlineWords = corpufy(News$Headline, 'H', 0.98)
-SnippetWords = corpufy(News$Snippet, 'S', 0.96)
-AbstractWords = corpufy(News$Abstract, 'A', 0.96)
 
+bow = function(df_) {
+  df = df_
+  
+  # --- Transform text variables to BofW
+  HeadlineWords = corpufy(df$Headline, 'H', 0.98)
+  SnippetWords = corpufy(df$Snippet, 'S', 0.96)
+  AbstractWords = corpufy(df$Abstract, 'A', 0.96)
+  
+  # --- Combine the BoW data frames to original data frame 
+  # ---- Headline
+  HeadlineWords$UniqueID = df$UniqueID
+  df = merge(df, HeadlineWords, by="UniqueID")
+  df$Headline = NULL
+  
+  # ---- Snippet
+  SnippetWords$UniqueID = df$UniqueID
+  df = merge(df, SnippetWords, by="UniqueID")
+  df$Snippet = NULL
+  
+  # ---- Abstact
+  AbstractWords$UniqueID = df$UniqueID
+  df = merge(df, AbstractWords, by="UniqueID")
+  df$Abstract = NULL
+  
+  return(df)
+}
 
-# --- Combine the BoW data frames to original data frame
-NewsWords = News
-
-# ---- Headline
-HeadlineWords$UniqueID = News$UniqueID
-NewsWords = merge(NewsWords, HeadlineWords, by="UniqueID")
-#Headline = News$Headline
-
-# ---- Snippet
-SnippetWords$UniqueID = News$UniqueID
-NewsWords = merge(NewsWords, SnippetWords, by="UniqueID")
-#Snippet = News$Snippet
-
-# ---- Abstact
-AbstractWords$UniqueID = News$UniqueID
-NewsWords = merge(NewsWords, AbstractWords, by="UniqueID")
-#Abstract = News$Abstract
-
-# --- Remove transformed text variables
-NewsWords$Headline = NULL
-NewsWords$Snippet = NULL
-NewsWords$Abstract = NULL
-
-# -- Split the data  into training and test sets
-NewsWordsTrain = head(NewsWords, nrow(NewsTrain))
-NewsWordsTrain$Popular = Popular
-NewsWordsTest = tail(NewsWords, nrow(NewsTest))
+splitTrainTest = function(df, y, yname='y') {
+  train = head(df, length(y))
+  train[, yname] = y
+  test = tail(df, nrow(df) - length(y))
+  return(list("train"=train, "test"=test))
+}

@@ -1,36 +1,96 @@
 # ============
 # Load scripts
 # ============
-source('dataprep2.R')
+source('dataprep.R')
 source('util.R')
 
+# ============
+# Extract data
+# ============
+news.train = read.csv("NYTimesBlogTrain.csv", stringsAsFactors=FALSE)
+news.test = read.csv("NYTimesBlogTest.csv", stringsAsFactors=FALSE)
+
+# ==============
+# Transform data
+# ==============
+# Combine train and test data
+out = combine(news.train, news.test)
+news = out$df
+Popular = out$y
+
+# Transform variables
+news = transform(news)
+Popular = as.factor(Popular)
+
+# Add Bag-of-Words variables
+news = bow(news)
+
+# Split train and test data
+o = splitTrainTest(news, Popular, "Popular")
+news.train = o$train
+news.test = o$test
+
 # ==========
-# Run models
+# Models
 # ==========
 # --------
 # Baseline
 # --------
-t = table(NewsWordsTrain$Popular)
+t = table(news.train$Popular)
 accuracy(t) # accuracy = 0.8326699 (predict all FALSE)
 
 # -------------------
 # Logistic Regression
 # -------------------
 # Build LR model and check summary
-NewsLog = glm(Popular ~. - UniqueID, data=NewsWordsTrain, family=binomial)
-summary(NewsLog)
+log = glm(Popular ~. - UniqueID, data=news.train, family=binomial)
 
 # Check training performance
-NewsTrainLogPred = predict(NewsLog)
-t = table(NewsWordsTrain$Popular, NewsTrainLogPred > 0.5)
-accuracy(t)
-aucroc(NewsTrainLogPred, NewsWordsTrain$Popular)
+verify(log, news.train$Popular)
 
 # Make predictions on the test set
-NewsTestLogPred = predict(NewsLog, newdata=NewsWordsTest, type="response")
+pred.test = predict(log, newdata=news.test, type="response")
 
 # Make submission (LOG)
-makeSubmitFile(NewsWordsTest$UniqueID, NewsTestLogPred, "MySubmissionLog6.csv", "submit")
+makeSubmitFile(news.test$UniqueID, pred.test, "lm8.csv", "submit")
+
+# -------------
+# Random Forest
+# -------------
+library(randomForest)
+
+# Tune
+# TODO
+
+# Build model
+set.seed(69)
+rf = randomForest(Popular ~ . - UniqueID, data=news.train, ntree=500, nodesize=20)
+
+# Get accuracy of RF on training set
+verify(rf, news.train$Popular, type="prob")
+
+# Make a submission 
+pred.test = predict(rf, newdata=news.test, type="prob")
+makeSubmitFile(news.test$UniqueID, pred.test[,2], "rf7.csv", "submit")
+# Last score: 0.91631 (no improv)
+
+# Tune RF
+Popular = NewsTrain$Popular
+UniqueID = NewsTrain$UniqueID
+NewsTrain$Popular = NULL
+NewsTrain$UniqueID = NULL
+NewsRFTune = tuneRF(NewsTrain, Popular)
+NewsTrain$Popular = Popular
+NewsTrain$UniqueID = UniqueID
+
+# Use cross validation
+library(caret)
+library(e1071)
+set.seed(69)
+numFolds <- trainControl(method="cv", number=10)
+grid <- expand.grid(mtry=12)
+train(Popular ~ . - UniqueID, data=NewsWordsTrain, method="rf", trControl=numFolds, tuneGrid=grid)
+
 
 # ----------
 # CART model
@@ -61,42 +121,3 @@ aucroc(NewsTrainCARTPred[,2], NewsTrain$Popular)
 # Make a submission 
 NewsTestCARTPred = predict(NewsCART, newdata=NewsWordsTest, type="prob")
 makeSubmitFile(NewsWordsTest$UniqueID, NewsTestCARTPred[,2], "MySubmissionCART.csv", "submit")
-
-# -------------
-# Random Forest
-# -------------
-library(randomForest)
-
-# Get tuning parameter/s
-# TODO
-
-set.seed(69)
-NewsRF = randomForest(Popular ~ . - UniqueID, data=NewsWordsTrain, ntree=500, nodesize=20, mtry=6)
-
-# Get accuracy of RF on training set
-NewsTrainRFPred = predict(NewsRF, type="prob")
-t = table(NewsWordsTrain$Popular, NewsTrainRFPred[,2] > 0.5)
-accuracy(t)
-aucroc(NewsTrainRFPred[,2], NewsWordsTrain$Popular)
-
-# Make a submission 
-NewsTestRFPred = predict(NewsRF, newdata=NewsWordsTest, type="prob")
-makeSubmitFile(NewsWordsTest$UniqueID, NewsTestRFPred[,2], "MySubmissionRF6.csv", "submit")
-# Last score: 0.91631 (no improv)
-
-# Tune RF
-Popular = NewsTrain$Popular
-UniqueID = NewsTrain$UniqueID
-NewsTrain$Popular = NULL
-NewsTrain$UniqueID = NULL
-NewsRFTune = tuneRF(NewsTrain, Popular)
-NewsTrain$Popular = Popular
-NewsTrain$UniqueID = UniqueID
-
-# Use cross validation
-library(caret)
-library(e1071)
-set.seed(69)
-numFolds <- trainControl(method="cv", number=10)
-grid <- expand.grid(mtry=12)
-train(Popular ~ . - UniqueID, data=NewsWordsTrain, method="rf", trControl=numFolds, tuneGrid=grid)
