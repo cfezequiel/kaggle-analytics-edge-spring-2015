@@ -60,19 +60,23 @@ makeSubmitFile(news.test$UniqueID, pred.test, "lm8.csv", "submit")
 library(randomForest)
 
 # Tune
-# TODO
+library(caret)
+set.seed(69)
+#rf.model = train(Popular ~. - UniqueID, data=news.train, method="rf", trControl=trainControl(method="cv", number=5), prox=TRUE)
+numFolds <- trainControl(method="cv", number=5)
+rf.caret <- train(Popular ~. - UniqueID, data=news.train, method='rf', trControl=numFolds)
+rf.caret
 
 # Build model
-set.seed(69)
-rf = randomForest(Popular ~ . - UniqueID, data=news.train, ntree=500, nodesize=20)
+rf = randomForest(Popular ~ . - UniqueID, data=news.train, ntree=500, nodesize=20, mtry=35)
 
 # Get accuracy of RF on training set
 verify(rf, news.train$Popular, type="prob")
 
 # Make a submission 
 pred.test = predict(rf, newdata=news.test, type="prob")
-makeSubmitFile(news.test$UniqueID, pred.test[,2], "rf7.csv", "submit")
-# Last score: 0.91631 (no improv)
+makeSubmitFile(news.test$UniqueID, pred.test[,2], "rf8.csv", "submit")
+# Last score: 0.91764 (no improv)
 
 # Tune RF
 Popular = NewsTrain$Popular
